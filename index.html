@@ -118,10 +118,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
 
     <section class="panel">
       <div class="panel-head"><h2>② 회전체</h2><span class="unit">끌어서 돌려 보기</span></div>
-      <div id="solid3d"><div class="deg-badge"><span id="deg">360°</span><small id="deg-label">1회전 완성</small></div><div class="drag-tip">드래그: 시점 바꾸기</div></div>
+      <div id="solid3d"><div class="deg-badge"><span id="deg">0°</span><small id="deg-label">‘회전시키기’를 눌러 보세요</small></div><div class="drag-tip">드래그: 시점 바꾸기</div></div>
       <div class="rotate-row">
         <button class="btn primary" id="play" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg><span id="play-label">회전시키기</span></button>
-        <input type="range" id="angle" min="0" max="360" step="1" value="360" aria-label="회전한 각도">
+        <input type="range" id="angle" min="0" max="360" step="1" value="0" aria-label="회전한 각도">
       </div>
       <div class="ticks"><span>0°</span><span>90°</span><span>180°</span><span>270°</span><span>360°</span></div>
     </section>
@@ -189,7 +189,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
   ];
   const ICON_DRAW = '<path d="M4 20l4-1 10-10-3-3L5 16z"/>';
 
-  const state = { preset:"cyl", pts:PRESETS[0].pts.slice(), drawing:false, angle:360, playing:false, cut:"none", h:2.5 };
+  const state = { preset:"cyl", pts:PRESETS[0].pts.slice(), drawing:false, angle:0, playing:false, cut:"none", h:2.5, revealed:false };
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   /* ---------- presets ---------- */
@@ -197,7 +197,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
   PRESETS.forEach(p=>{
     const b = document.createElement("button"); b.type="button"; b.className="chip"; b.dataset.id=p.id;
     b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+p.icon+'</svg>';
-    b.appendChild(document.createTextNode(p.label + " → " + p.name));
+    b.appendChild(document.createTextNode(p.label));
     b.addEventListener("click", ()=> choosePreset(p.id));
     presetBox.appendChild(b);
   });
@@ -213,7 +213,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
     const p = PRESETS.find(x=>x.id===id);
     state.preset = id; state.pts = p.pts.map(a=>a.slice()); state.drawing = false;
     $("draw-tools").hidden = true; $("draw-err").hidden = true;
-    syncChips(); drawPlane(); updateInfo(); play();
+    resetToFlat();
+  }
+  // Show only the flat figure; the solid appears when the viewer presses the rotate button.
+  function resetToFlat(){
+    stopPlay(); state.revealed = false; setCut("none", true);
+    syncChips(); drawPlane(); updateInfo(); setAngle(0);
   }
   function startDrawing(){
     stopPlay();
@@ -285,7 +290,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
   function finishDrawing(){
     if (state.pts.length < 3 || Math.abs(area(state.pts)) < 0.01) { const e=$("draw-err"); e.textContent="꼭짓점을 3개 이상, 한 줄 위에 있지 않게 찍어 주세요."; e.hidden=false; return; }
     state.drawing = false; $("draw-tools").hidden = true; hover = null;
-    drawPlane(); updateInfo(); play();
+    resetToFlat();
   }
 
   /* ---------- 3D ---------- */
@@ -396,14 +401,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
     state.angle = Math.max(0, Math.min(360, a));
     $("angle").value = String(Math.round(state.angle));
     $("deg").textContent = Math.round(state.angle) + "°";
-    $("deg-label").textContent = state.angle >= 360 ? "1회전 완성" : state.angle === 0 ? "회전 전" : "회전하는 중";
+    $("deg-label").textContent = state.angle >= 360 ? "1회전 완성" : state.angle === 0 ? "‘회전시키기’를 눌러 보세요" : "회전하는 중";
+    if (state.angle >= 360 && !state.revealed && !state.drawing) { state.revealed = true; updateInfo(); }
     rebuild();
   }
   let last = 0;
   function tick(t){
     if (!state.playing) return;
-    const dt = last ? (t-last)/1000 : 0; last = t;
-    setAngle(state.angle + dt*90);
+    const dt = last ? Math.min(0.05, (t-last)/1000) : 0; last = t;
+    setAngle(state.angle + dt*72);
     if (state.angle >= 360) { stopPlay(); return; }
     requestAnimationFrame(tick);
   }
@@ -421,7 +427,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
   function updateInfo(){
     const p = PRESETS.find(x=>x.id===state.preset);
     const list = $("info-list"); list.textContent = "";
-    if (p) {
+    if (!state.revealed && !state.drawing) {
+      $("info-name").textContent = "어떤 입체도형이 될까요?";
+      $("info-from").textContent = "이 평면도형을 회전축 l을 중심으로 1회전 시키면 어떤 모양이 될지 먼저 예상해 보세요. 그다음 ‘회전시키기’를 눌러 확인해요.";
+    } else if (p) {
       $("info-name").textContent = p.name; $("info-from").textContent = p.from;
       p.facts.forEach(f=>{ const li=document.createElement("li"); li.textContent=f; list.appendChild(li); });
     } else if (state.drawing) {
@@ -461,7 +470,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
     drawCut();
     if (!silent) rebuild();
   }
-  document.querySelectorAll(".cut-modes .chip").forEach(c=> c.addEventListener("click", ()=>{ if (state.drawing || state.pts.length<3) return; setCut(c.dataset.cut); }));
+  document.querySelectorAll(".cut-modes .chip").forEach(c=> c.addEventListener("click", ()=>{
+    if (state.drawing || state.pts.length<3) return;
+    if (!state.revealed && c.dataset.cut !== "none") { $("cut-title").textContent = "먼저 회전체를 만들어 보세요"; $("cut-desc").textContent = "‘회전시키기’를 눌러 1회전을 마치면 회전체를 잘라 볼 수 있어요."; return; }
+    setCut(c.dataset.cut);
+  }));
   $("cut-h").addEventListener("input", e=>{ state.h = +e.target.value; $("cut-h-val").textContent = state.h.toFixed(1)+"칸"; drawCut(); rebuild(); });
 
   const cv = $("cutview"), cctx = cv.getContext("2d");
@@ -510,7 +523,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
   ro.observe(plane); ro.observe(host);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ drawPlane(); drawCut(); });
 
-  fitPlane(); syncChips(); drawPlane(); updateInfo(); drawCut(); resize3d(); setAngle(360);
+  fitPlane(); syncChips(); drawPlane(); updateInfo(); drawCut(); resize3d(); setAngle(0);
 })();
 </script>
 
