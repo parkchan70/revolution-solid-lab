@@ -320,9 +320,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
     Object.values(mats).forEach(m=>m.dispose && m.dispose());
     mats = {
       solid: new THREE.MeshStandardMaterial({ color:c("--solid"), roughness:.45, metalness:.05, side:THREE.DoubleSide }),
-      ghost: new THREE.MeshBasicMaterial({ color:c("--figure"), side:THREE.DoubleSide, transparent:true, opacity:.75, depthWrite:false }),
-      ghostStart: new THREE.MeshBasicMaterial({ color:c("--figure"), side:THREE.DoubleSide, transparent:true, opacity:.25, depthWrite:false }),
-      edge: new THREE.LineBasicMaterial({ color:c("--figure") }),
+      // while sweeping, the trail is see-through so the moving figure stays in view
+      sweep: new THREE.MeshStandardMaterial({ color:c("--solid"), roughness:.45, metalness:.05, side:THREE.DoubleSide, transparent:true, opacity:.5, depthWrite:false }),
+      ghost: new THREE.MeshBasicMaterial({ color:c("--figure"), side:THREE.DoubleSide, transparent:true, opacity:.95, depthTest:false, depthWrite:false }),
+      ghostStart: new THREE.MeshBasicMaterial({ color:c("--figure"), side:THREE.DoubleSide, transparent:true, opacity:.3, depthWrite:false }),
+      edge: new THREE.LineBasicMaterial({ color:c("--axis"), depthTest:false }),
       axis: new THREE.LineDashedMaterial({ color:c("--axis"), dashSize:.35, gapSize:.25 }),
       cap: new THREE.MeshBasicMaterial({ color:c("--cut"), side:THREE.DoubleSide }),
       cutPlane: new THREE.MeshBasicMaterial({ color:c("--cut"), side:THREE.DoubleSide, transparent:true, opacity:.12, depthWrite:false })
@@ -364,12 +366,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
     mats.solid.clippingPlanes = clip;
     if (phi > 0.001) {
       const lp = pts.map(p=>new THREE.Vector2(Math.max(0.0001,p[0]), p[1])); lp.push(lp[0].clone());
-      solidMesh = new THREE.Mesh(new THREE.LatheGeometry(lp, 96, 0, phi), mats.solid);
+      solidMesh = new THREE.Mesh(new THREE.LatheGeometry(lp, Math.max(2, Math.ceil(96*phi/(2*Math.PI))), 0, phi), state.angle < 360 ? mats.sweep : mats.solid);
       scene.add(solidMesh);
     }
     if (state.cut === "none") {
       ghostStart = figureObj(pts, mats.ghostStart); ghostStart.rotation.y = -Math.PI/2; scene.add(ghostStart);
-      if (state.angle < 360) { ghost = figureObj(pts, mats.ghost); ghost.rotation.y = phi - Math.PI/2; scene.add(ghost); }
+      if (state.angle < 360) { ghost = figureObj(pts, mats.ghost); ghost.rotation.y = phi - Math.PI/2; ghost.renderOrder = 10; ghost.children.forEach(ch=> ch.renderOrder = 10); scene.add(ghost); }
     } else if (state.cut === "axial") {
       capMesh = new THREE.Group();
       capMesh.add(new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(pts,false)), mats.cap));
@@ -409,14 +411,14 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--solid);outline-
   function tick(t){
     if (!state.playing) return;
     const dt = last ? Math.min(0.05, (t-last)/1000) : 0; last = t;
-    setAngle(state.angle + dt*72);
+    setAngle(state.angle + dt*45);
     if (state.angle >= 360) { stopPlay(); return; }
     requestAnimationFrame(tick);
   }
   function play(){
     if (state.drawing) return;
     setCut("none", true);
-    if (reduce) { setAngle(360); return; }
+    // The sweep is the lesson itself, so it plays even when the OS asks for reduced motion.
     setAngle(0); state.playing = true; last = 0; $("play-label").textContent = "멈추기"; requestAnimationFrame(tick);
   }
   function stopPlay(){ state.playing = false; $("play-label").textContent = "회전시키기"; }
